@@ -1,7 +1,5 @@
-// lib/main.dart
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'api_service.dart';
 import 'week4.dart';
 
 void main() {
@@ -16,13 +14,40 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'AQI App',
       theme: ThemeData(
-        primarySwatch: Colors.blue,
-        textTheme: GoogleFonts.ubuntuTextTheme(),
+        brightness: Brightness.dark,
+        primaryColor: Colors.blueAccent,
+        scaffoldBackgroundColor: const Color(0xFF1A1A1A),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Color(0xFF2C2C2C),
+          elevation: 0,
+        ),
+        textTheme: GoogleFonts.ubuntuTextTheme(
+          ThemeData.dark().textTheme,
+        ),
       ),
       home: const AqiScreen(),
     );
   }
 }
+
+Color _getAqiColor(int aqi) {
+  if (aqi <= 50) return Colors.green;
+  if (aqi <= 100) return Colors.yellow.shade700;
+  if (aqi <= 150) return Colors.orange;
+  if (aqi <= 200) return Colors.red;
+  if (aqi <= 300) return Colors.purple;
+  return Colors.brown;
+}
+
+String _getAqiStatus(int aqi) {
+  if (aqi <= 50) return 'Good';
+  if (aqi <= 100) return 'Moderate';
+  if (aqi <= 150) return 'Unhealthy for Sensitive Groups';
+  if (aqi <= 200) return 'Unhealthy';
+  if (aqi <= 300) return 'Very Unhealthy';
+  return 'Hazardous';
+}
+
 
 class AqiScreen extends StatefulWidget {
   const AqiScreen({super.key});
@@ -32,122 +57,157 @@ class AqiScreen extends StatefulWidget {
 }
 
 class _AqiScreenState extends State<AqiScreen> {
-  final ApiService _apiService = ApiService();
-  late Future<AqiResponse> _aqiDataFuture;
+  Future<AqiDataPoint>? _aqiDataFuture;
 
-  // เมืองที่เราต้องการดึงข้อมูล
-  final String _city = "bankok";
+  final TextEditingController _cityController = TextEditingController();
+  final String _city = "bangkok";
 
   @override
   void initState() {
     super.initState();
-    // เริ่มดึงข้อมูลทันทีที่หน้าจอนี้ถูกสร้าง
-    _aqiDataFuture = _apiService.fetchAqiData(_city);
+    _fetchDataForCity(_city);
+    _cityController.text = _city;
   }
 
-  // ฟังก์ชันสำหรับ Refresh ข้อมูล
-  void _refreshData() {
+  void _fetchDataForCity(String city) {
     setState(() {
-      _aqiDataFuture = _apiService.fetchAqiData(_city);
+      _aqiDataFuture = AqiDataPoint.fetchData(city);
     });
+  }
+
+  void _searchCity() {
+    if (_cityController.text.isNotEmpty) {
+      FocusScope.of(context).unfocus();
+      _fetchDataForCity(_cityController.text.trim());
+    }
+  }
+  
+
+  @override
+  void dispose() {
+    _cityController.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.amber,
       appBar: AppBar(
         centerTitle: true,
         title: const Text('Air Quality Index (AQI)'),
       ),
-      body: Center(
-        child: FutureBuilder<AqiResponse>(
-          future: _aqiDataFuture,
-          builder: (context, snapshot) {
-            // กรณี: กำลังโหลดข้อมูล
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const CircularProgressIndicator();
-            }
-            // กรณี: เกิด Error
-            else if (snapshot.hasError) {
-              return Text('Error: ${snapshot.error}');
-            }
-            // กรณี: โหลดข้อมูลสำเร็จ
-            else if (snapshot.hasData) {
-              // ดึงข้อมูลออกมาจาก snapshot
-              final aqiData = snapshot.data!.data;
-              return Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: <Widget>[
-                    // 1. แสดงชื่อเมือง
-                    Text(
-                      aqiData.city.name,
-                      style: Theme.of(context).textTheme.headlineMedium,
-                    ),
-                    const SizedBox(height: 20),
-                    // Container สำหรับแสดงค่า AQI
-                    Container(
-                      padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 40),
-                      decoration: BoxDecoration(
-                        color: _getAqiColor(aqiData.aqi), // เปลี่ยนสีตามค่า AQI
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Text(
-                        // 2. แสดงค่า AQI
-                        aqiData.aqi.toString(),
-                        style: const TextStyle(fontSize: 80, color: Colors.white, fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    // แสดงสถานะคุณภาพอากาศ
-                    Text(
-                      _getAqiStatus(aqiData.aqi),
-                      style: Theme.of(context).textTheme.headlineSmall,
-                    ),
-                    const SizedBox(height: 10),
-                    // 3. แสดงอุณหภูมิ
-                    Text(
-                      'Temperature: ${aqiData.iaqi.t.v}°C',
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                    const SizedBox(height: 40),
-                    // ปุ่ม Refresh
-                    ElevatedButton.icon(
-                      onPressed: _refreshData,
-                      icon: const Icon(Icons.refresh),
-                      label: const Text('Refresh'),
-                    ),
-                  ],
-                ),
-              );
-            }
-            // กรณีอื่นๆ (ไม่ควรเกิดขึ้น)
-            return const Text('No data found.');
-          },
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          children: [
+            _buildSearchCard(),
+            const SizedBox(height: 20),
+            _buildAqiResult(),
+          ],
         ),
       ),
     );
   }
 
-  // Helper function เพื่อเปลี่ยนสีตามค่า AQI
-  Color _getAqiColor(int aqi) {
-    if (aqi <= 50) return Colors.green;
-    if (aqi <= 100) return Colors.yellow.shade700;
-    if (aqi <= 150) return Colors.orange;
-    if (aqi <= 200) return Colors.red;
-    if (aqi <= 300) return Colors.purple;
-    return Colors.brown;
+  Widget _buildSearchCard() {
+    return Card(
+      color: const Color(0xFF2C2C2C),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+        child: Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _cityController,
+                decoration: const InputDecoration(
+                  hintText: 'Enter city name...',
+                  border: InputBorder.none,
+                ),
+                onSubmitted: (_) => _searchCity(),
+              ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.search),
+              onPressed: _searchCity,
+            ),
+          ],
+        ),
+      ),
+    );
   }
-  
-  // Helper function เพื่อแสดงสถานะตามค่า AQI
-  String _getAqiStatus(int aqi) {
-    if (aqi <= 50) return 'Good';
-    if (aqi <= 100) return 'Moderate';
-    if (aqi <= 150) return 'Unhealthy for Sensitive';
-    if (aqi <= 200) return 'Unhealthy';
-    if (aqi <= 300) return 'Very Unhealthy';
-    return 'Hazardous';
+
+  Widget _buildAqiResult() {
+    if (_aqiDataFuture == null) {
+      return const Center(child: Text("Please search for a city."));
+    }
+
+    return FutureBuilder<AqiDataPoint>(
+      future: _aqiDataFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.error_outline, color: Colors.red, size: 60),
+                const SizedBox(height: 16),
+                Text(
+                  'Could not find data for "${_cityController.text}".\nPlease try another city.',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 16),
+                ),
+              ],
+            ),
+          );
+        }
+        if (snapshot.hasData) {
+          final aqiData = snapshot.data!;
+          return Column(
+            children: [
+              Text(aqiData.cityName, style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 20),
+              Container(
+                padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 40),
+                decoration: BoxDecoration(
+                  color: _getAqiColor(aqiData.aqi),
+                  borderRadius: BorderRadius.circular(15),
+                  boxShadow: [ BoxShadow( color: _getAqiColor(aqiData.aqi), blurRadius: 15, offset: const Offset(0, 5),) ]
+                ),
+                child: Text(aqiData.aqi.toString(), style: const TextStyle(fontSize: 80, fontWeight: FontWeight.bold)),
+              ),
+              const SizedBox(height: 20),
+              Text(
+                _getAqiStatus(aqiData.aqi),
+                style: TextStyle(color: _getAqiColor(aqiData.aqi), fontSize: 24, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 30),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  _buildInfoChip(Icons.thermostat, '${aqiData.temperature.toStringAsFixed(1)}°C', 'Temperature'),
+                  _buildInfoChip(Icons.water_drop_outlined, '${aqiData.humidity.toStringAsFixed(1)}%', 'Humidity'),
+                ],
+              ),
+            ],
+          );
+        }
+        return const Center(child: Text("No data."));
+      },
+    );
+  }
+
+  Widget _buildInfoChip(IconData icon, String value, String label) {
+    return Column(
+      children: [
+        Icon(icon, size: 30),
+        const SizedBox(height: 8),
+        Text(value, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w600)),
+        Text(label, style: TextStyle(color: Colors.grey[400])),
+      ],
+    );
   }
 }
